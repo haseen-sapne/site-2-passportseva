@@ -1,26 +1,88 @@
 @import "tailwindcss";
 
-:root {
-  --background: #ffffff;
-  --foreground: #171717;
-}
-
-@theme inline {
-  --color-background: var(--background);
-  --color-foreground: var(--foreground);
-  --font-sans: var(--font-geist-sans);
-  --font-mono: var(--font-geist-mono);
-}
-
-@media (prefers-color-scheme: dark) {
+@layer base {
   :root {
-    --background: #0a0a0a;
-    --foreground: #ededed;
+    --primary: #003366;
+    --primary-dark: #002244;
+    --primary-light: #0B4F8A;
+    --saffron: #FF9933;
+    --saffron-dark: #E67E22;
+    --india-green: #138808;
+    --ashoka-blue: #000080;
+    --gov-slate: #1E293B;
+    --gov-border: #E2E8F0;
+    --gov-bg: #F8FAFC;
+    --gov-card: #FFFFFF;
   }
 }
 
-body {
-  background: var(--background);
-  color: var(--foreground);
-  font-family: Arial, Helvetica, sans-serif;
+/* Authentic Indian Government & Passport Seva theme utilities */
+.bg-gov-blue {
+  background-color: #003366;
+}
+
+.text-gov-blue {
+  color: #003366;
+}
+
+.border-gov-blue {
+  border-color: #003366;
+}
+
+.bg-gov-saffron {
+  background-color: #FF9933;
+}
+
+.text-gov-saffron {
+  color: #FF9933;
+}
+
+.bg-gov-green {
+  background-color: #138808;
+}
+
+.text-gov-green {
+  color: #138808;
+}
+
+.tricolor-bar {
+  background: linear-gradient(
+    to right,
+    #FF9933 0%,
+    #FF9933 33.33%,
+    #FFFFFF 33.33%,
+    #FFFFFF 66.66%,
+    #138808 66.66%,
+    #138808 100%
+  );
+  height: 4px;
+}
+
+/* Subtle Government Security Watermark Pattern */
+.bg-gov-pattern {
+  background-color: #f8fafc;
+  background-image: radial-gradient(#cbd5e1 0.75px, transparent 0.75px), radial-gradient(#cbd5e1 0.75px, #f8fafc 0.75px);
+  background-size: 30px 30px;
+  background-position: 0 0, 15px 15px;
+}
+
+/* Print Styling for Official Government Slip */
+@media print {
+  body {
+    background: white !important;
+    color: black !important;
+  }
+  .no-print {
+    display: none !important;
+  }
+  .print-only {
+    display: block !important;
+  }
+  .printable-slip {
+    border: 2px solid #000 !important;
+    box-shadow: none !important;
+    margin: 0 !important;
+    padding: 16px !important;
+    page-break-inside: avoid;
+  }
 }
