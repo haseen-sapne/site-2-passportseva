@@ -1,162 +1,85 @@
-import { NextRequest, NextResponse } from "next/server";
-import { connectToDatabase } from "@/lib/mongodb";
-import { PassportApplication } from "@/lib/models/PassportApplication";
-import { mockStore, ApplicationRecord } from "@/lib/mockStore";
+import { NextResponse } from 'next/server';
+import { connectToDatabase } from '@/lib/mongodb';
+import { Application, Appointment } from '@/lib/models';
 
-export async function POST(req: NextRequest) {
+export async function POST(req: Request) {
   try {
-    // 1. Security Check: Validate x-api-key header
-    const apiKey = req.headers.get("x-api-key");
-    const expectedSecret =
-      process.env.HACKATHON_SECRET_KEY || "hackathon-internal-secret-2026";
-
-    if (!apiKey || apiKey !== expectedSecret) {
-      return NextResponse.json(
-        {
-          success: false,
-          error: "Unauthorized",
-          message: "Invalid or missing 'x-api-key' header.",
-        },
-        { status: 401 }
-      );
-    }
-
-    // 2. Parse and Validate Inbound JSON Body
-    const body = await req.json().catch(() => ({}));
+    const body = await req.json();
     const {
-      applicant_name,
-      applicantName,
+      firstName,
+      lastName,
       dob,
-      id_proof,
-      idProof,
-      rpo_location,
-      rpoLocation,
-      service_type,
-      serviceType,
-      appointment_date,
+      address,
+      serviceType = 'Fresh',
+      pskLocation = 'Delhi - RPO Herald House, ITO',
       appointmentDate,
-      fee_amount,
-      feeAmount,
     } = body;
 
-    const resolvedName = applicant_name || applicantName;
-    const resolvedRpo = rpo_location || rpoLocation;
-    const resolvedDate = appointment_date || appointmentDate;
-
-    if (!resolvedName || !resolvedRpo || !resolvedDate) {
+    // Validation
+    if (!firstName || !lastName || !dob || !address) {
       return NextResponse.json(
-        {
-          success: false,
-          error: "Bad Request",
-          message: "Missing required fields: 'applicant_name', 'rpo_location', and 'appointment_date' are mandatory.",
-        },
+        { error: 'Missing required applicant fields: firstName, lastName, dob, and address are required.' },
         { status: 400 }
       );
     }
 
-    const resolvedDob = dob || "1990-01-01";
-    // Strict Aadhaar Privacy Rule: Always enforce [Aadhaar Redacted]
-    const resolvedIdProof = "[Aadhaar Redacted]";
-    const resolvedServiceType =
-      service_type || serviceType || "Normal Scheme (36 Pages) - ₹1,500";
+    await connectToDatabase();
 
-    // 3. Generate Unique Application Reference Number (ARN)
-    const draftId = "PSK-ARN-" + Math.floor(1000000 + Math.random() * 9000000);
+    // Generate unique public IDs
+    const randomNum = Math.floor(100000 + Math.random() * 900000);
+    const appId = `APP-${new Date().getFullYear()}-${randomNum}`;
+    const appointmentId = `APT-${Date.now().toString().slice(-6)}`;
+    const tokenNumber = `TKN-${Math.floor(100 + Math.random() * 900)}`;
 
-    // 4. Determine fee_amount
-    const isTatkaal =
-      resolvedServiceType.toLowerCase().includes("tatkaal") ||
-      resolvedServiceType.includes("3,500");
-    const resolvedFee = fee_amount || feeAmount || (isTatkaal ? "₹3,500" : "₹1,500");
+    // 1. Create Application Document
+    const newApplication = await Application.create({
+      appId,
+      userId: `USR-${randomNum}`,
+      serviceType: ['Fresh', 'Re-issue', 'Tatkaal'].includes(serviceType) ? serviceType : 'Fresh',
+      status: 'Submitted',
+      personalDetails: {
+        firstName,
+        lastName,
+        dob,
+        address,
+        aadhaarId: '[Aadhaar Redacted]',
+      },
+    });
 
-    const portalBaseUrl =
-      process.env.NEXT_PUBLIC_PORTAL_BASE_URL || "http://localhost:3002";
-    const portalUrl = `${portalBaseUrl.replace(/\/$/, "")}/checkout?draftId=${draftId}`;
+    // 2. Create Appointment Document
+    const slotDate = appointmentDate ? new Date(appointmentDate) : new Date(Date.now() + 7 * 24 * 60 * 60 * 1000);
 
-    const recordData: ApplicationRecord = {
-      draftId,
-      applicant_name: resolvedName,
-      applicantName: resolvedName,
-      dob: resolvedDob,
-      id_proof: resolvedIdProof,
-      idProof: resolvedIdProof,
-      rpo_location: resolvedRpo,
-      rpoLocation: resolvedRpo,
-      service_type: resolvedServiceType,
-      serviceType: resolvedServiceType,
-      appointment_date: resolvedDate,
-      appointmentDate: resolvedDate,
-      appointmentTime: "09:45 AM - 10:15 AM",
-      fee_amount: resolvedFee,
-      feeAmount: resolvedFee,
-      status: "DRAFT_PENDING_PAYMENT",
-      payment_status: "UNPAID",
-      applicationRef: draftId,
-      batchNumber: "BATCH-A12",
-      reportingTime: "09:30 AM",
-      gateNumber: "Gate 2 (Biometric Wing)",
-      passportCategory: isTatkaal ? "Tatkaal Scheme" : "Fresh Normal",
-      address: body.address || "Residential Address Verified on File",
-      phone: body.phone || "+91 98765 43210",
-      email: body.email || "citizen.applicant@gov.in",
-      source: "SITE_1_AI_GATEWAY",
-      createdAt: new Date().toISOString(),
-      updatedAt: new Date().toISOString(),
-    };
+    const newAppointment = await Appointment.create({
+      appointmentId,
+      appId,
+      pskLocation,
+      dateTime: slotDate,
+      tokenNumber,
+      paymentStatus: 'PAID',
+    });
 
-    // 5. In-Memory Store (Resilient Fallback)
-    mockStore.set(draftId, recordData);
-
-    // 6. Save Record in MongoDB PassportApplication collection
-    try {
-      const db = await connectToDatabase();
-      if (db) {
-        await PassportApplication.create({
-          draftId,
-          applicant_name: resolvedName,
-          dob: resolvedDob,
-          id_proof: resolvedIdProof,
-          rpo_location: resolvedRpo,
-          service_type: resolvedServiceType,
-          appointment_date: resolvedDate,
-          fee_amount: resolvedFee,
-          status: "DRAFT_PENDING_PAYMENT",
-          payment_status: "UNPAID",
-        });
-      }
-    } catch (dbErr: any) {
-      console.warn("[Draft API] MongoDB write skipped, cached in memory:", dbErr?.message);
-    }
-
-    // 7. Return HTTP 201 Created with exact structure
-    return NextResponse.json(
-      {
-        success: true,
-        status: "APPOINTMENT_DRAFTED",
-        draftId: draftId,
-        message: `Passport application draft created for ${resolvedName}. Biometric slot pre-booked at ${resolvedRpo}.`,
-        details: {
-          applicant_name: resolvedName,
-          rpo_location: resolvedRpo,
-          service_type: resolvedServiceType,
-          appointment_date: resolvedDate,
-          id_proof: resolvedIdProof,
-          application_ref: draftId,
-          portal_url: portalUrl,
-          fee_amount: resolvedFee,
-          expires_in_minutes: 30,
+    return NextResponse.json({
+      success: true,
+      message: 'Passport application submitted and appointment slot reserved.',
+      draftId: appId,
+      data: {
+        appId: newApplication.appId,
+        applicantName: `${firstName} ${lastName}`,
+        serviceType: newApplication.serviceType,
+        status: newApplication.status,
+        appointment: {
+          appointmentId: newAppointment.appointmentId,
+          pskLocation: newAppointment.pskLocation,
+          dateTime: newAppointment.dateTime,
+          tokenNumber: newAppointment.tokenNumber,
         },
       },
-      { status: 201 }
-    );
+    }, { status: 201 });
+
   } catch (error: any) {
-    console.error("[API Error /api/appointments/draft]:", error);
+    console.error('Error creating passport application draft:', error);
     return NextResponse.json(
-      {
-        success: false,
-        error: "Internal Server Error",
-        message: error?.message || "Failed to process passport draft request.",
-      },
+      { error: 'Internal Server Error', details: error.message },
       { status: 500 }
     );
   }
